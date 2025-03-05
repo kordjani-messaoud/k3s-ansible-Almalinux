@@ -5,12 +5,6 @@
       - ansible_version.full is version('2.14', '>=')
     msg: "Minimum ansible-core version required is 2.14"
 
-- name: Install Dependent Ubuntu Packages
-  when: ansible_distribution in ['Ubuntu']
-  ansible.builtin.apt:
-    name: policycoreutils  # Used by install script to restore SELinux context
-    update_cache: true
-
 - name: Enable IPv4 forwarding
   ansible.posix.sysctl:
     name: net.ipv4.ip_forward
@@ -28,42 +22,6 @@
 
 - name: Populate service facts
   ansible.builtin.service_facts:
-
-- name: Allow UFW Exceptions
-  when:
-    - ansible_facts.services['ufw'] is defined
-    - ansible_facts.services['ufw'].state == 'running'
-  block:
-    - name: Get ufw status
-      ansible.builtin.command:
-        cmd: ufw status
-      changed_when: false
-      register: ufw_status
-
-    - name: If ufw enabled, open api port
-      when:
-        - ufw_status['stdout'] == "Status':' active"
-      community.general.ufw:
-        rule: allow
-        port: "{{ api_port }}"
-        proto: tcp
-
-    - name: If ufw enabled, open etcd ports
-      when:
-        - ufw_status['stdout'] == "Status':' active"
-        - groups[server_group] | length > 1
-      community.general.ufw:
-        rule: allow
-        port: "2379:2381"
-        proto: tcp
-
-    - name: If ufw enabled, allow default CIDRs
-      when:
-        - ufw_status['stdout'] == "Status':' active"
-      community.general.ufw:
-        rule: allow
-        src: '{{ item }}'
-      loop: "{{ (cluster_cidr + ',' + service_cidr) | split(',') }}"
 
 - name: Allow Firewalld Exceptions
   when:
@@ -132,13 +90,13 @@
     content: "br_netfilter"
     dest: /etc/modules-load.d/br_netfilter.conf
     mode: "u=rw,g=,o="
-  when: (ansible_os_family == 'RedHat' or ansible_distribution == 'Archlinux')
+  when: (ansible_os_family == 'RedHat' and ansible_distribution == 'AlmaLinux')
 
 - name: Load br_netfilter
   community.general.modprobe:
     name: br_netfilter
     state: present
-  when: (ansible_os_family == 'RedHat' or ansible_distribution == 'Archlinux')
+  when: (ansible_os_family == 'RedHat' and ansible_distribution == 'AlmaLinux')
 
 - name: Set bridge-nf-call-iptables (just to be sure)
   ansible.posix.sysctl:
@@ -146,7 +104,7 @@
     value: "1"
     state: present
     reload: true
-  when: (ansible_os_family == 'RedHat' or ansible_distribution == 'Archlinux')
+  when: (ansible_os_family == 'RedHat' and ansible_distribution == 'AlmaLinux')
   loop:
     - net.bridge.bridge-nf-call-iptables
     - net.bridge.bridge-nf-call-ip6tables
@@ -169,16 +127,6 @@
     - apparmor_status.stdout == "Y"
   ansible.builtin.package:
     name: apparmor-parser
-    state: present
-
-- name: Install Apparmor Parser [Debian]
-  when:
-    - ansible_distribution == 'Debian'
-    - ansible_facts['distribution_major_version'] == "11"
-    - apparmor_status is defined
-    - apparmor_status.stdout == "Y"
-  ansible.builtin.package:
-    name: apparmor
     state: present
 
 - name: Gather the package facts
